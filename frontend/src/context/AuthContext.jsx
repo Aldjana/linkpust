@@ -22,7 +22,10 @@ export function AuthProvider({ children }) {
     api
       .get('/auth/me')
       .then((data) => setUser(data.user))
-      .catch(() => tokenStore.clear())
+      // Seul un 401 invalide la session : une panne réseau ne doit pas déconnecter l'utilisateur
+      .catch((err) => {
+        if (err.status === 401) tokenStore.clear();
+      })
       .finally(() => setLoading(false));
   }, []);
 

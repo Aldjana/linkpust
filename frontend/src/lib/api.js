@@ -58,17 +58,27 @@ async function request(path, { method = 'GET', body } = {}) {
   }
 
   if (res.status === 204) return null;
-  const data = await res.json().catch(() => null);
+  const isJson = (res.headers.get('content-type') || '').includes('application/json');
+  const data = isJson ? await res.json().catch(() => null) : null;
 
   if (!res.ok) {
     const error = data?.error ?? {};
     if (res.status === 401 && token) onUnauthorized();
+    // Pas de réponse JSON de l'API : backend arrêté (proxy Vite en 500/502) ou passerelle en erreur
+    if (!data && res.status >= 500) {
+      throw new ApiError(res.status, 'SERVER_UNAVAILABLE', "Le serveur ne répond pas. Réessayez dans un instant.");
+    }
     throw new ApiError(
       res.status,
       error.code || 'ERROR',
       error.message || 'Une erreur est survenue',
       error.details
     );
+  }
+  // Une réponse 2xx non-JSON (ex. index.html servi par la réécriture SPA) signifie que
+  // VITE_API_URL ne pointe pas vers l'API : on lève une erreur claire au lieu de planter plus loin.
+  if (!data) {
+    throw new ApiError(res.status, 'BAD_RESPONSE', "Réponse inattendue du serveur. L'API est-elle bien configurée ?");
   }
   return data;
 }
